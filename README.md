@@ -26,4 +26,4 @@ Sequencing was done at the University of Michigan Sequencing Core using a PacBio
 
 3. **Lignogroups:** contains the data tables used for the determination of highly lignolytic fungi.
 
-4. **peroxidase_expression_code.Rmd:** RMarkdown document with the R code used for all statistics done in the manuscript.
+4. **R code:** contains and Rmarkdown document for all statistics run for the manuscript and the environmental file used for PERMANOVA.
