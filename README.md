@@ -24,6 +24,6 @@ Sequencing was done at the University of Michigan Sequencing Core using a PacBio
 
 2. **QPCR:** contains the .csv files from the the 18S and peroxidase qPCR, including sample information, ct and copy numbers.
 
-3. **Lignogroups:** contains the data tables used for the determination of highly lignolytic fungi.
+3. **Lignogroups:** contains the data tables used for the determination of highly lignolytic fungi, including information about which taxa are included as defined by Entwistle et al (accepted) in *Ecological Monographs*.
 
 4. **R code:** contains and Rmarkdown document for all statistics run for the manuscript and the environmental file used for PERMANOVA.
