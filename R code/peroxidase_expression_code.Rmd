@@ -1,0 +1,748 @@
+---
+title: Fungal Gene Expression Underlies an Increasing Soil Carbon Sink in the Northern Hemisphere
+author: "William A. Argiroff"
+date: "November 28, 2017"
+output:
+  html_notebook:
+    self_contained: yes
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  html_document:
+    self_contained: yes
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+
+```{r knitr_global_setup, eval = TRUE, echo = FALSE}
+# Set global knitr options
+knitr::opts_chunk$set(echo = FALSE, eval = TRUE, warning = TRUE, message = TRUE)
+```
+
+```{r set_wd_load_packages, echo = FALSE, results = "hide", message = FALSE}
+# Set working directory.
+setwd("~/Desktop/Expression_manuscript")
+
+# Make a vector of required packages.
+required.packages <- c("knitr", "data.table", "vegan")
+
+# Load required packages.
+lapply(required.packages, library, character.only = TRUE)
+```
+
+```{r read_in_and_normalize_perox_data, echo = FALSE}
+## Combine technical replicates and format data
+
+# Read in qPCR data.
+perox.data.df <- read.csv(file = "perox_qpcr_data.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+# Calculate replicate means
+perox.working.df <- aggregate(perox.data.df[c(4:9, 11 : ncol(perox.data.df))], by = list(perox.data.df$PLOT, perox.data.df$SITE, perox.data.df$TREATMENT), mean)
+# Update column names
+colnames(perox.working.df)[1:3] <- c("PLOT", "SITE", "TREATMENT")
+
+## Calculate copy numbers per kg FF
+
+# Correct for dilution factor
+perox.working.df$COPIES.DIL <- perox.working.df$COPIES * perox.working.df$DILUTION
+# Correct for volume
+perox.working.df$COPIES.VOL <- perox.working.df$COPIES.DIL * (1 / (perox.working.df$VOLUME))
+# Calculate dry mass (in Kg) of FF
+perox.working.df$FF.DRY.MASS <- (perox.working.df$FF.WET.MASS * (1 - perox.working.df$FF.MOISTURE)) * (1 / 1000)
+# Normalize to dry FF mass
+perox.working.df$COPIES.NORM.FF.PEROX <- perox.working.df$COPIES.VOL * (1 / (perox.working.df$FF.DRY.MASS))
+```
+
+```{r remove_outliers_perox}
+## Drop outliers
+
+# Calculate treatment means
+perox.treat.means.df <- as.data.frame(aggregate(perox.working.df["COPIES.NORM.FF.PEROX"], by = list(perox.working.df$TREATMENT), mean), stringsAsFactors = FALSE)
+# Update column names
+colnames(perox.treat.means.df) <- c("TREATMENT", "MEAN.COPIES.NORM.FF.PEROX")
+# Calculate treatment sd
+perox.treat.sd.df <- as.data.frame(aggregate(perox.working.df["COPIES.NORM.FF.PEROX"], by = list(perox.working.df$TREATMENT), sd), stringsAsFactors = FALSE)
+# Update column names
+colnames(perox.treat.sd.df) <- c("TREATMENT", "SD.COPIES.NORM.FF.PEROX")
+
+# Combine data frames
+perox.treat.means.sd.df <- merge(perox.treat.means.df, perox.treat.sd.df, by = "TREATMENT")
+# Combine with original data
+perox.working.full.df <- merge(perox.working.df, perox.treat.means.sd.df, by = "TREATMENT")
+# Add 2 SD column
+perox.working.full.df$SD.COPIES.NORM.FF.PEROX.2 <- 2 * perox.working.full.df$SD.COPIES.NORM.FF.PEROX
+# Add difference from treatment means
+perox.working.full.df$ABS.DIFF.PEROX <- abs(perox.working.full.df$COPIES.NORM.FF.PEROX - perox.working.full.df$MEAN.COPIES.NORM.FF.PEROX)
+
+# Trim out outliers
+perox.working.trim.df <- perox.working.full.df[perox.working.full.df$ABS.DIFF.PEROX < perox.working.full.df$SD.COPIES.NORM.FF.PEROX.2, ]
+```
+
+```{r read_in_and_normalize_ribo_data_trim_to_match_perox, echo = FALSE}
+## Combine technical replicates and format data
+
+# Read in qPCR data.
+ribo.data.df <- read.csv(file = "18S_qpcr_data.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+# Calculate replicate means
+ribo.working.df <- as.data.frame(aggregate(ribo.data.df[4 : ncol(ribo.data.df)], by = list(ribo.data.df$PLOT, ribo.data.df$SITE, ribo.data.df$TREATMENT), mean), stringsAsFactors = FALSE)
+# Update column names
+colnames(ribo.working.df)[1:3] <- c("PLOT", "SITE", "TREATMENT")
+
+## Calculate copy numbers per kg FF
+
+# Correct for dilution factor
+ribo.working.df$COPIES.DIL <- ribo.working.df$COPIES * ribo.working.df$DILUTION
+# Calculate dry mass of FF
+ribo.working.df$FF.DRY.MASS <- (ribo.working.df$FF.WET.MASS * (1 - ribo.working.df$FF.MOISTURE)) * (1 / 1000)
+# Normalize to dry FF mass
+ribo.working.df$COPIES.NORM.FF.18S <- ribo.working.df$COPIES.DIL * (1 / (ribo.working.df$FF.DRY.MASS))
+# Trim to match peroxidase
+ribo.working.trim.df <- merge(perox.working.trim.df["PLOT"], ribo.working.df, by = "PLOT")
+```
+
+```{r mean_copies_by_stand}
+## Calculate means and SE
+
+# Combine perox and ribo
+working.trim.df <- merge(perox.working.trim.df[c("PLOT", "SITE", "TREATMENT", "COPIES.NORM.FF.PEROX")], ribo.working.trim.df[c("PLOT", "COPIES.NORM.FF.18S")], by = "PLOT")
+
+# Write se function
+se <- function(x) {
+  sd(x) / sqrt(length(x))
+}
+
+# Calculate means
+site.means.trim.df <- as.data.frame(aggregate(working.trim.df[c("COPIES.NORM.FF.PEROX", "COPIES.NORM.FF.18S")], by = list(working.trim.df$SITE, working.trim.df$TREATMENT), mean), stringsAsFactors = FALSE)
+# Renames columns
+colnames(site.means.trim.df) <- c("SITE", "TREATMENT", "MEAN.PEROX", "MEAN.18S")
+
+# Calculate treat means
+treat.means.trim.df <- as.data.frame(aggregate(site.means.trim.df[c("MEAN.PEROX", "MEAN.18S")], by = list(site.means.trim.df$TREATMENT), mean), stringsAsFactors = FALSE)
+# Renames columns
+colnames(treat.means.trim.df) <- c("TREATMENT", "MEAN.PEROX", "MEAN.18S")
+
+# Calculate treat se
+treat.se.trim.df <- as.data.frame(aggregate(site.means.trim.df[c("MEAN.PEROX", "MEAN.18S")], by = list(site.means.trim.df$TREATMENT), se), stringsAsFactors = FALSE)
+# Renames columns
+colnames(treat.se.trim.df) <- c("TREATMENT", "SE.PEROX", "SE.18S")
+# Combine data frames
+treat.means.se.df <- merge(treat.means.trim.df, treat.se.trim.df, by = "TREATMENT")
+
+# Perox, maximum
+treat.means.se.df$EBAR.MAX.PEROX <- treat.means.se.df$MEAN.PEROX + treat.means.se.df$SE.PEROX
+# Perox, minimum
+treat.means.se.df$EBAR.MIN.PEROX <- treat.means.se.df$MEAN.PEROX - treat.means.se.df$SE.PEROX
+
+# 18S, maximum
+treat.means.se.df$EBAR.MAX.18S <- treat.means.se.df$MEAN.18S + treat.means.se.df$SE.18S
+# 18S, minimum
+treat.means.se.df$EBAR.MIN.18S <- treat.means.se.df$MEAN.18S - treat.means.se.df$SE.18S
+
+# ANOVA
+perox.treat.anova <- aov(MEAN.PEROX ~ TREATMENT, data = site.means.trim.df)
+ribo.treat.anova <- aov(MEAN.18S ~ TREATMENT, data = site.means.trim.df)
+# Summarize anova results
+perox.treat.anova.summary <- summary.aov(perox.treat.anova)
+ribo.treat.anova.summary <- summary.aov(ribo.treat.anova)
+```
+
+```{r expression_figure_by_stand, fig.align = "center", fig.width = 6, fig.height = 3}
+# Save image
+#pdf("nature.fig2.pdf", width = 8, height = 4)
+
+# Make a two-panel figure
+par(mfrow = c(1, 2))
+
+# Adjust margin sizes
+par(oma = c(0, 2, 0, 0), mar = c(3, 5, 2, 1))
+
+# Adjust bar thickness
+par(lwd = 2)
+
+# Create first figure
+perox.barplt2 <- barplot(treat.means.se.df$MEAN.PEROX, 
+                         # Remove axes
+                         axes = FALSE, 
+                         # Remove annotations
+                         axisnames = FALSE, 
+                         # Fill bars
+                         col = c("white", "black"), 
+                         # Add axis limits
+                         ylim = c(0, 2800000))
+# Add error bars
+arrows(perox.barplt2[, 1], 
+       treat.means.se.df$EBAR.MAX.PEROX, 
+       perox.barplt2[, 1], 
+       treat.means.se.df$EBAR.MIN.PEROX, 
+       length = 0.1, 
+       angle = 90, 
+       code = 3, 
+       lwd = 2)
+# Add titles
+title(main = "Peroxidase mRNA", 
+      font.main = 2, 
+      cex.main = 1.2, 
+      line = 1, 
+      adj = 0.5, 
+      col.main = "black")
+# Add y axis ticks
+axis(2, at = c(0, 1400000, 2800000), 
+     labels = FALSE, 
+     lwd = 0, 
+     lwd.ticks = 2, 
+     col.ticks = "black")
+# Add y axis labels
+text(y = c(0, 1400000, 2800000), 
+     x = -0.1, 
+     adj = 1, 
+     las = 1, 
+     labels = c(expression(bold("0")), 
+                expression(bold(paste("1.4", " \U00D7 ", "10"^"6"))), 
+                expression(bold(paste("2.8", " \U00D7 ", "10"^"6")))), 
+     cex = 1, 
+     font = 2,  
+     xpd = TRUE, 
+     col = "black")
+
+# Add significance label
+text(x = perox.barplt2[2, 1], 
+     y = 850000, 
+     labels = "**", 
+     cex = 1.4, 
+     font = 2)
+
+# Add box
+box(lwd = 2, 
+    col = "black", 
+    bty = "l")
+
+# Adjust bar thickness
+par(lwd = 2)
+
+# Create first figure
+ribo.barplot2 <- barplot(treat.means.se.df$MEAN.18S, 
+                         # Remove axes
+                         axes = FALSE, 
+                         # Remove annotations
+                         axisnames = FALSE, 
+                         # Fill bars
+                         col = c("white", "black"), 
+                         # Add axis limits
+                         ylim = c(0, 7000000000))
+# Add error bars
+arrows(ribo.barplot2[, 1], 
+       treat.means.se.df$EBAR.MAX.18S, 
+       ribo.barplot2[, 1], 
+       treat.means.se.df$EBAR.MIN.18S, 
+       length = 0.1, 
+       angle = 90, 
+       code = 3, 
+       lwd = 2)
+# Add titles
+title(main = "18S rRNA", 
+      font.main = 2, 
+      cex.main = 1.2, 
+      line = 1, 
+      adj = 0.5, 
+      col.main = "black")
+# Add y axis ticks
+axis(2, at = c(0, 3500000000, 7000000000), 
+     labels = FALSE, 
+     lwd = 0, 
+     lwd.ticks = 2, 
+     col.ticks = "black")
+# Add y axis labels
+text(y = c(0, 3500000000, 7000000000), 
+     x = -0.1, 
+     adj = 1, 
+     las = 1, 
+     labels = c(expression(bold("0")), 
+                expression(bold(paste("3.5", " \U00D7 ", "10"^"9"))), 
+                expression(bold(paste("7.0", " \U00D7 ", "10"^"9")))), 
+     cex = 1, 
+     font = 2,  
+     xpd = TRUE, 
+     col = "black")
+
+# Add box
+box(lwd = 2, 
+    col = "black", 
+    bty = "l")
+
+# Add a y axis title
+mtext("Copies per kg forest floor", 
+      side = 2, 
+      col = "black", 
+      cex = 1.1, 
+      font = 2, 
+      outer = TRUE, 
+      line = 0)
+
+# Add legend
+legend(-3.75, -250000000, 
+       c("Ambient N", "Experimental N"), 
+       fill = c("white", "black"), 
+       ncol = 2, 
+       pt.lwd = 2, 
+       text.font = 2, 
+       cex = 1.1, 
+       bty = "n", 
+       xpd = NA)
+
+# Finish image
+#dev.off()
+```
+
+```{r relativized_perox}
+# Calculate means by site and treatment
+site.means.trim.df <- as.data.frame(aggregate(working.trim.df[c("COPIES.NORM.FF.PEROX", "COPIES.NORM.FF.18S")], by = list(working.trim.df$SITE, working.trim.df$TREATMENT), mean), stringsAsFactors = FALSE)
+# Update column names
+colnames(site.means.trim.df)[1:2] <- c("SITE", "TREATMENT")
+# Relativize peroxidase copies
+site.means.trim.df$PEROX.REL.18S <- site.means.trim.df$COPIES.NORM.FF.PEROX * (1 / site.means.trim.df$COPIES.NORM.FF.18S)
+
+# Calculate means by treatment
+rel.treat.means.trim.df <- as.data.frame(aggregate(site.means.trim.df["PEROX.REL.18S"], by = list(site.means.trim.df$TREATMENT), mean), stringsAsFactors = FALSE)
+# Update column names
+colnames(rel.treat.means.trim.df) <- c("TREATMENT", "MEAN.PEROX.REL.18S")
+
+# Calculate SE by treatment
+rel.treat.se.trim.df <- as.data.frame(aggregate(site.means.trim.df["PEROX.REL.18S"], by = list(site.means.trim.df$TREATMENT), se), stringsAsFactors = FALSE)
+# Update column names
+colnames(rel.treat.se.trim.df) <- c("TREATMENT", "SE.PEROX.REL.18S")
+
+# Combine means and SE
+rel.treat.means.se.df <- merge(rel.treat.means.trim.df, rel.treat.se.trim.df, by = "TREATMENT")
+
+# Error bar maximums
+rel.treat.means.se.df$EBAR.MAX <- rel.treat.means.se.df$MEAN.PEROX.REL.18S + rel.treat.means.se.df$SE.PEROX.REL.18S
+# Error bar minimums
+rel.treat.means.se.df$EBAR.MIN <- rel.treat.means.se.df$MEAN.PEROX.REL.18S - rel.treat.means.se.df$SE.PEROX.REL.18S
+
+# ANOVA
+rel.anova <- aov(PEROX.REL.18S ~ TREATMENT, data = site.means.trim.df)
+# Summarize anova results
+rel.anova.summary <- summary.aov(rel.anova)
+```
+
+```{r expression_figure_rel_perox, fig.align = "center", fig.width = 4, fig.height = 4}
+# Save image
+#pdf("nature.fig.3.pdf", width = 4, height = 4)
+
+# Adjust margin sizes
+par(mar = c(3, 8, 4, 1))
+
+# Adjust bar thickness
+par(lwd = 2)
+
+# Create first figure
+perox.rel.plt <- barplot(rel.treat.means.se.df$MEAN.PEROX.REL.18S, 
+                         # Remove axes
+                         axes = FALSE, 
+                         # Remove annotations
+                         axisnames = FALSE, 
+                         # Fill bars
+                         col = c("white", "black"), 
+                         # Add axis limits
+                         ylim = c(0, 0.0008))
+# Add error bars
+arrows(perox.rel.plt[, 1], 
+       rel.treat.means.se.df$EBAR.MAX, 
+       perox.rel.plt[, 1], 
+       rel.treat.means.se.df$EBAR.MIN, 
+       length = 0.1, 
+       angle = 90, 
+       code = 3, 
+       lwd = 2)
+# Add titles
+title(main = "Relativized peroxidase\nexpression", 
+      font.main = 2, 
+      cex.main = 1.2, 
+      line = 1, 
+      adj = 0.5, 
+      col.main = "black")
+title(ylab = "Copies peroxidase mRNA\nper copy 18S rRNA",  
+      font.lab = 2, 
+      line = 5.5, 
+      cex.lab = 1.2, 
+      col.lab = "black")
+# Add y axis ticks
+axis(2, at = c(0, 0.0004, 0.0008), 
+     labels = FALSE, 
+     lwd = 0, 
+     lwd.ticks = 2, 
+     col.ticks = "black")
+# Add y axis labels
+text(y = c(0, 0.0004, 0.0008), 
+     x = -0.1, 
+     adj = 1, 
+     las = 1, 
+     labels = c(expression(bold("0")), 
+                expression(bold(paste("4.0", " \U00D7 ", "10"^"-4"))), 
+                expression(bold(paste("8.0", " \U00D7 ", "10"^"-4")))), 
+     cex = 1, 
+     font = 2,  
+     xpd = TRUE, 
+     col = "black")
+
+# Add significance label
+text(x = perox.rel.plt[2, 1], 
+     y = 0.00026, 
+     labels = "*", 
+     cex = 1.4, 
+     font = 2)
+
+# Add box
+box(lwd = 2, 
+    col = "black", 
+    bty = "l")
+
+# Add legend
+legend(-1, 0, 
+       c("Ambient N", "Experimental N"), 
+       fill = c("white", "black"), 
+       ncol = 2, 
+       pt.lwd = 2, 
+       text.font = 2, 
+       cex = 1, 
+       bty = "n", 
+       xpd = NA)
+
+# Finish image
+#dev.off()
+```
+
+```{r calculate_delta_ct_values_relative_to_ribo_by_site, echo = FALSE}
+## Calculate delta Ct
+
+# Correct peroxidase and 18S Ct values
+perox.working.trim.df$CT.CORRECTED.PEROX <- (-3.573 * log10(perox.working.trim.df$COPIES.VOL)) + 43.58
+ribo.working.trim.df$CT.CORRECTED.18S <- (-3.849 * log10(ribo.working.trim.df$COPIES.DIL)) + 41.13
+# Combine averaged Ct values
+ct.working.exp.df <- merge(perox.working.trim.df[c("PLOT", "SITE", "TREATMENT", "CT.CORRECTED.PEROX")], ribo.working.trim.df[c("PLOT", "CT.CORRECTED.18S")], by = "PLOT")
+
+# Calculate site by treatment corrected Ct
+ct.treat.mean.df <- aggregate(ct.working.exp.df[c("CT.CORRECTED.PEROX", "CT.CORRECTED.18S")], by = list(ct.working.exp.df$SITE, ct.working.exp.df$TREATMENT), mean)
+# Update column names
+colnames(ct.treat.mean.df)[1:2] <- c("SITE", "TREATMENT")
+# Split into a list by treatment
+ct.treat.mean.list <- split(ct.treat.mean.df, ct.treat.mean.df$TREATMENT)
+# Update column names
+colnames(ct.treat.mean.list[[1]]) <- c("SITE", "TREATMENT.AMBIENT", "CT.CORRECTED.PEROX.AMBIENT", "CT.CORRECTED.18S.AMBIENT")
+colnames(ct.treat.mean.list[[2]]) <- c("SITE", "TREATMENT.NDEP", "CT.CORRECTED.PEROX.NDEP", "CT.CORRECTED.18S.NDEP")
+# Combine by site
+ct.treat.mean.final.df <- Reduce(function(x, y) {merge(x, y, by = "SITE")}, ct.treat.mean.list)
+# delta delta Ct
+ct.treat.mean.final.df$DD.CT <- ((ct.treat.mean.final.df$CT.CORRECTED.PEROX.NDEP - ct.treat.mean.final.df$CT.CORRECTED.18S.NDEP) - (ct.treat.mean.final.df$CT.CORRECTED.PEROX.AMBIENT - ct.treat.mean.final.df$CT.CORRECTED.18S.AMBIENT))
+# Expression fold change
+ct.treat.mean.final.df$EXP.FOLD.CHANGE <- 2 ^ (-1 * ct.treat.mean.final.df$DD.CT)
+
+# All sites, mean
+all.ddct.mean <- mean(ct.treat.mean.final.df$DD.CT)
+
+# Max
+all.ddct.se.max <- all.ddct.mean + se(ct.treat.mean.final.df$DD.CT)
+# Min
+all.ddct.se.min <- all.ddct.mean - se(ct.treat.mean.final.df$DD.CT)
+
+# Mean to fold change
+all.fc.mean <- 2 ^ (-1 * all.ddct.mean)
+
+# Max, fold change
+all.fc.se.max <- 2 ^ (-1 * all.ddct.se.min)
+# Min, fold change
+all.fc.se.min <- 2 ^ (-1 * all.ddct.se.max)
+```
+
+```{r fold_change_all_sites_mean_figure_se, echo = FALSE, fig.align = "center", fig.width = 4, fig.height = 4}
+# Save image
+#pdf("1.expression.fold.change.A-D.mean.standard.error.pdf", width = 3, height = 3)
+#pdf("1.expression.fold.change.A-D.mean.standard.error.pdf", width = 4, height = 4)
+
+# Adjust margin sizes
+par(mar = c(3, 4, 3, 1))
+
+# Adjust bar thickness
+par(lwd = 2)
+
+# Add plot area
+plot(1, all.fc.mean, 
+     type = "n", 
+     axes = FALSE, 
+     ann = FALSE, 
+     ylim = c(0, 1.5), 
+     yaxs = "i")
+
+# Add error bars
+arrows(1, 
+       all.fc.se.max, 
+       1, 
+       all.fc.se.min, 
+       col = "black", 
+       length = 0.025, 
+       angle = 90, 
+       code = 3, 
+       lwd = 2)
+
+# Create plot
+points(1, all.fc.mean, 
+       # Specify plot type "point"
+       type = "p", 
+       # Color by treatment
+       bg = "black", 
+       # Adjust point size
+       cex = 1.2, 
+       # Adjust shape
+       pch = 21,  
+       # Adjust line thickness
+       lwd = 2)
+
+# Add titles
+title(main = "Fold-change in\nperoxidase expression", 
+      font.main = 2, 
+      cex.main = 1.2, 
+      line = 1, 
+      adj = 0.5, 
+      col.main = "black")
+# y axis title
+title(ylab = "Fold change",  
+      font.lab = 2, 
+      line = 2.5, 
+      cex.lab = 1.2, 
+      col.lab = "black")
+# Add y axis ticks
+axis(2, at = c(0, 0.5, 1, 1.5), 
+     labels = FALSE, 
+     lwd = 0, 
+     lwd.ticks = 2, 
+     col.ticks = "black")
+# Add y axis labels
+text(y = c(0, 0.5, 1, 1.5), 
+     x = 0.5, 
+     adj = 1, 
+     #las = 1, 
+     labels = c("0", "0.5", "1.0", "1.5"), 
+     cex = 1, 
+     font = 2,  
+     xpd = TRUE, 
+     col = "black")
+
+# Add horizontal line
+abline(h = 1, 
+       col = "black", 
+       lwd = 2, 
+       lty = 2)
+
+# Add box
+box(lwd = 2, 
+    col = "black", 
+    bty = "l")
+
+# Finish image
+#dev.off()
+```
+
+```{r distance_matrices_hellinger}
+## Experimental design
+
+# Read in design
+exp.design.df <- read.table("exp.design.expression.txt", sep = "\t", header = TRUE)
+
+## Format OTU tables
+
+# Read in OTU table (shared file)
+otu.df1 <- as.data.frame(fread("combined.28S.unique.good.filter.unique.precluster.pick.pick.an.unique_list.shared", sep = "\t", header = TRUE))
+# Trim OTU table
+otu.df2 <- otu.df1[c(2, 4 : ncol(otu.df1))]
+# Update column names
+colnames(otu.df2)[1] <- "GROUP"
+
+# Combine OTU table and experimental design
+otu.df3 <- merge(exp.design.df, otu.df2, by = "GROUP")
+# Add row names
+row.names(otu.df3) <- otu.df3$GROUP
+
+## Transform abundances
+
+# Trim and convert to matrix
+otu.mat1 <- as.matrix(otu.df3[5 : ncol(otu.df3)])
+# Proportions
+otu.mat2 <- otu.mat1 * (1 / apply(otu.mat1, 1, sum))
+# Square root transform
+otu.h.df <- as.data.frame(sqrt(otu.mat2))
+
+## Calculate distance matrices
+
+# Calculate matrix
+otu.dist <- vegdist(otu.h.df, method = "bray", binary = FALSE)
+
+# Remove temporary data
+rm(otu.df1, otu.df2, otu.df3, otu.mat1, otu.mat2)
+```
+
+```{r run_pcoa_28s}
+## Run PCoA
+
+# PCoA
+otu.pcoa <- cmdscale(otu.dist, k = 6, eig = TRUE, add = FALSE)
+
+# Make a points data frame
+otu.pcoa.df1 <- as.data.frame(otu.pcoa$points)
+# Update column names
+colnames(otu.pcoa.df1) <- c("PCO1", "PCO2", "PCO3", "PCO4", "PCO5", "PCO6")
+# Add GROUP column
+otu.pcoa.df1$GROUP <- row.names(otu.pcoa.df1)
+# Add experimental design
+otu.pcoa.df2 <- droplevels(merge(exp.design.df, otu.pcoa.df1, by = "GROUP"))
+# Add row names
+row.names(otu.pcoa.df2) <- otu.pcoa.df2$GROUP
+
+## Axis contributions
+
+# Contributions
+otu.pcoa.eig <- 100 * (otu.pcoa$eig * (1 / sum(otu.pcoa$eig)))
+
+## Points data for figures
+
+# Calculate means
+otu.pcoa.df3 <- aggregate(otu.pcoa.df2[5 : ncol(otu.pcoa.df2)], by = list(otu.pcoa.df2$TREATMENT), mean)
+# Change column names
+colnames(otu.pcoa.df3) <- c("TREATMENT", "PCO1.MEAN", "PCO2.MEAN", "PCO3.MEAN", "PCO4.MEAN", "PCO5.MEAN", "PCO6.MEAN")
+# Add color by treatment for figure
+otu.pcoa.df3$TREATMENT.COLOR <- as.character(c("white", "black"))
+# Add shapes by site for figure
+otu.pcoa.df3$SITE.SHAPE <- rep(21, 2)
+# Calculate se
+otu.pcoa.df4 <- aggregate(otu.pcoa.df2[5 : ncol(otu.pcoa.df2)], by = list(otu.pcoa.df2$TREATMENT), se)
+# Change column names
+colnames(otu.pcoa.df4) <- c("TREATMENT", "PCO1.SE", "PCO2.SE", "PCO3.SE", "PCO4.SE", "PCO5.SE", "PCO6.SE")
+# Calculate error bar limits
+otu.pcoa.df5 <- data.frame(PCO1.EBAR.MAX = otu.pcoa.df3$PCO1.MEAN + otu.pcoa.df4$PCO1.SE, 
+                           PCO1.EBAR.MIN = otu.pcoa.df3$PCO1.MEAN - otu.pcoa.df4$PCO1.SE, 
+                           PCO2.EBAR.MAX = otu.pcoa.df3$PCO2.MEAN + otu.pcoa.df4$PCO2.SE, 
+                           PCO2.EBAR.MIN = otu.pcoa.df3$PCO2.MEAN - otu.pcoa.df4$PCO2.SE, 
+                           PCO3.EBAR.MAX = otu.pcoa.df3$PCO3.MEAN + otu.pcoa.df4$PCO3.SE, 
+                           PCO3.EBAR.MIN = otu.pcoa.df3$PCO3.MEAN - otu.pcoa.df4$PCO3.SE, 
+                           stringsAsFactors = FALSE)
+
+# Assign to a new name
+otu.pcoa.mean.df <- otu.pcoa.df3
+otu.pcoa.ebar.df <- otu.pcoa.df5
+
+# Remove temporary data
+rm(otu.pcoa.df1, otu.pcoa.df2, otu.pcoa.df3, otu.pcoa.df4, otu.pcoa.df5)
+```
+
+```{r permanova_permdisp_28s}
+# Set seed
+set.seed(1234)
+
+## PERMANOVA
+
+# PERMANOVA
+otu.permanova <- adonis(otu.dist ~ SITE * TREATMENT, data = exp.design.df, permutations = 9999)
+
+## PERMDISP
+
+# Run betadisper
+otu.betadisper <- betadisper(otu.dist, exp.design.df$TREATMENT)
+# Permutation test
+otu.permdisp <- permutest(otu.betadisper, pairwise = TRUE, permutations = 9999)
+```
+
+```{r pcoa_figures, fig.align = "center", fig.width = 3, fig.height = 3}
+# Save image
+#pdf("expression.pcoa.pdf", width = 3, height = 3)
+
+# Margin sizes for first figure panel
+par(oma = c(1, 0, 0, 0), mar = c(2, 2, 1, 1))
+
+# Add plot area
+plot(c(otu.pcoa.ebar.df$PCO1.EBAR.MAX, otu.pcoa.ebar.df$PCO1.EBAR.MIN), 
+     c(otu.pcoa.ebar.df$PCO2.EBAR.MAX, otu.pcoa.ebar.df$PCO2.EBAR.MIN), 
+     type = "n", 
+     axes = FALSE, 
+     ann = FALSE)
+
+# Add PCO1 error bars
+arrows(otu.pcoa.ebar.df$PCO1.EBAR.MAX, 
+       otu.pcoa.mean.df$PCO2.MEAN, 
+       otu.pcoa.ebar.df$PCO1.EBAR.MIN, 
+       otu.pcoa.mean.df$PCO2.MEAN, 
+       length = 0, 
+       angle = 90, 
+       code = 3, 
+       lwd = 2)
+
+# Add PCO3 error bars
+arrows(otu.pcoa.mean.df$PCO1.MEAN, 
+       otu.pcoa.ebar.df$PCO2.EBAR.MAX, 
+       otu.pcoa.mean.df$PCO1.MEAN, 
+       otu.pcoa.ebar.df$PCO2.EBAR.MIN, 
+       length = 0, 
+       angle = 90, 
+       code = 3, 
+       lwd = 2)
+
+# Create plot
+points(otu.pcoa.mean.df$PCO1.MEAN, 
+       otu.pcoa.mean.df$PCO2.MEAN, 
+       # Specify plot type "point"
+       type = "p", 
+       # Color by treatment
+       bg = otu.pcoa.mean.df$TREATMENT.COLOR, 
+       # Adjust point size
+       cex = 1.5, 
+       # Adjust shape by site
+       pch = otu.pcoa.mean.df$SITE.SHAPE, 
+       # Adjust line thickness
+       lwd = 2)
+
+# Add x axis title
+title(xlab = paste("PCo1 (", round(otu.pcoa.eig[1], 1), "% of total variation)", sep = ""), 
+      font.lab = 2, 
+      line = 0.3, 
+      cex.lab = 0.8, 
+      col.lab = "black")
+
+# Add y axis title
+title(ylab = paste("PCo2 (", round(otu.pcoa.eig[2], 1), "% of total variation)", sep = ""), 
+      font.lab = 2, 
+      line = 0.3, 
+      cex.lab = 0.8, 
+      col.lab = "black")
+
+# Add significance label
+text(x = -0.005, 
+     y = 0.0625, 
+     labels = "*", 
+     cex = 1.4, 
+     font = 2)
+
+# Add box around plot
+box(lwd = 2, 
+    col = "black")
+
+# Add legend
+legend(-0.09, -0.125, 
+       c("Ambient N", "Experimental N"), 
+       ncol = 2, 
+       pch = 21, 
+       pt.bg = c("white", "black"), 
+       pt.lwd = 2, 
+       pt.cex = 1.2, 
+       text.font = 2, 
+       cex = 0.8, 
+       bty = "n", 
+       xpd = NA)
+
+# Finish image
+#dev.off()
+```
+
+```{r}
+(treat.means.se.df$MEAN.PEROX[2] - treat.means.se.df$MEAN.PEROX[1]) / treat.means.se.df$MEAN.PEROX[1]
+(treat.means.se.df$MEAN.18S[2] - treat.means.se.df$MEAN.18S[1]) / treat.means.se.df$MEAN.18S[1]
+
+(rel.treat.means.se.df$MEAN.PEROX.REL.18S[2] - rel.treat.means.se.df$MEAN.PEROX.REL.18S[1]) / rel.treat.means.se.df$MEAN.PEROX.REL.18S[1]
+```
