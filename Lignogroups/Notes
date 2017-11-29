@@ -3,9 +3,8 @@ the RDP Classifier (Version 2.11) against the 28S LSU trainset 11. This taxonomy
 created in MOTHUR, as it works as an OTU table, to create the document RDP_Shared.csv.
 
 All OTUs with classifications at the genus level below 80% were removed, as well as any that were classified as non-fungal.
-This updated OTU/Taxa table was subset for Agaricoymetes (Agaricomyetes.csv) and highly lignolytic taxa
-(Highlylignolytic.csv). Highly lignolytic taxa (HLT) are defined in Entwistle et al, 2018 (accepted; Tables S2 & S3) and only
-thoese with a minimum of 20 sequences per OTU were used.
+This updated OTU/Taxa table was subset for Total Fungi, Agaricoymetes and highly lignolytic taxa. Highly lignolytic taxa (HLT) 
+are defined in Entwistle et al, 2018 (accepted; Tables S2 & S3) and only thoese with a >20 sequences per OTU were used.
 
 The data was analyzed with ANOVA by sqaure root transforming the relative abundance of the HLT to Agaricomycetes or total
 Fungi or total sequences.	
