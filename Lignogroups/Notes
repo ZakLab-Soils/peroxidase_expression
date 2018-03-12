@@ -4,7 +4,7 @@ created in MOTHUR, as it works as an OTU table, to create the document RDP_Share
 
 All OTUs with classifications at the genus level below 80% were removed, as well as any that were classified as non-fungal.
 This updated OTU/Taxa table was subset for Total Fungi, Agaricoymetes and highly lignolytic taxa. Highly lignolytic taxa (HLT) 
-are defined in Entwistle et al, 2018 (accepted; Tables S2 & S3) and only thoese with a >20 sequences per OTU were used.
+are defined in Entwistle et al, 2018 (Table 2, Tables S2 & S3) and only thoese with a >20 sequences per OTU were used.
 
-The data was analyzed with ANOVA by sqaure root transforming the relative abundance of the HLT to Agaricomycetes or total
-Fungi or total sequences.	
+The data was analyzed with ANOVA by sqaure root transforming the relative abundance of the HLT to Agaricomycetes or total 
+sequences.	
