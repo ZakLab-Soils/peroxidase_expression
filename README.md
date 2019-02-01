@@ -5,11 +5,11 @@
 
 
 
-##### Submitted to ***Nature*** as a Letter
+##### Submitted to ***Ecology*** as a Report
 
 ***************
 
-This repository is associated with the manuscript ***"Fungal Gene Expression Underlies an Increasing Soil Carbon Sink in the Northern Hemisphere"*** written by Donald R. Zak, William A. Argiroff, Zachary B. Freedman, Rima A. Upchurch and Elizabeth M. Entwistle.
+This repository is associated with the manuscript ***"Fungal Gene Expression Underlies an Increasing Soil Carbon Sink in the Northern Hemisphere"*** written by Donald R. Zak, William A. Argiroff, Zachary B. Freedman, Rima A. Upchurch, Elizabeth M. Entwistle and Karl J. Romanowicz.
 
 ***************
 Information about this repository
