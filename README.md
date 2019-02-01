@@ -1,7 +1,7 @@
 # Fungal Gene Expression Underlies an Increasing Soil Carbon Sink in the Northern Hemisphere
 
 
-#### Donald R. Zak, William A. Argiroff, Zachary B. Freedman, Rima A. Upchurch, and Elizabeth M. Entwistle
+#### Donald R. Zak, William A. Argiroff, Zachary B. Freedman, Rima A. Upchurch, Elizabeth M. Entwistle and Karl J. Romanowicz
 
 
 
