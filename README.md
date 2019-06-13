@@ -15,7 +15,7 @@ This repository is associated with the manuscript ***"Fungal Gene Expression Und
 Information about this repository
 
 ##### **Sequencing Data**
-Sequencing was done at the University of Michigan Sequencing Core using a PacBio-RS II system. FASTQ files were submitted to the NCBI Sequence Read Archive under BioProject [PRJNA222775](http://www.ncbi.nlm.nih.gov/bioproject/PRJNA222775) with SRA accession numbers [SRX3857909](https://www.ncbi.nlm.nih.gov/sra/SRX3857909[accn]).
+Sequencing was done at the University of Michigan Sequencing Core using a PacBio-RS II system. FASTQ files were submitted to the NCBI Sequence Read Archive under BioProject [PRJNA222775](http://www.ncbi.nlm.nih.gov/bioproject/PRJNA222775) with SRA accession numbers [SRR6909896](https://www.ncbi.nlm.nih.gov/sra/SRR6909896[accn]).
 
 ##### **Directories:**
 1. **MOTHUR:** contains all files necessary to run **MOTHUR**, including the batch file, oligos files and taxa related files. 
